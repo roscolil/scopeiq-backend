@@ -1,0 +1,11 @@
+langgraph==0.6.6
+langchain==0.3.27
+langchain-pinecone==0.2.12
+langchain-openai==0.3.32
+langchain-community==0.3.29
+langchain-text-splitters==0.3.11
+langsmith
+fastapi==0.116.1
+pinecone==7.3.0
+python-dotenv
+pypdf==6.0.0
