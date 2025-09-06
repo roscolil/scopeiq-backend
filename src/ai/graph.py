@@ -13,40 +13,78 @@ from langchain_openai import OpenAIEmbeddings
 from langgraph.graph import START, StateGraph
 from typing_extensions import List, TypedDict
 from langchain_core.documents import Document
+from src.core.config import settings
 
-from ingest import init_pinecone
+
+def init_pinecone():
+    """Initialize Pinecone connection"""
+    pinecone_api_key = settings.PINECONE_API_KEY
+    pinecone_index_name = settings.PINECONE_INDEX_NAME
+
+    if not pinecone_api_key or not pinecone_index_name:
+        return None
+
+    pc = Pinecone(api_key=pinecone_api_key)
+    return pc.Index(pinecone_index_name)
 
 
 def init_retriever(pc_index):
 
-    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+    embeddings = OpenAIEmbeddings(
+        model="text-embedding-3-small", openai_api_key=settings.OPENAI_API_KEY
+    )
     vector_store = PineconeVectorStore(index=pc_index, embedding=embeddings)
     return vector_store.as_retriever(
-        search_type="similarity_score_threshold",
+        search_type="mmr",
         search_kwargs={"k": 4, "score_threshold": 0.4},
     )
 
 
 def init_llm():
     # Check if OpenAI API key is set
-    openai_api_key = os.environ.get("OPENAI_API_KEY")
+    openai_api_key = settings.OPENAI_API_KEY
 
     if not openai_api_key:
         print("Warning: OPENAI_API_KEY environment variable is not set.")
         print("Please set this environment variable to use the LLM functionality.")
         return None
 
-    return init_chat_model(model="gpt-4o", model_provider="openai")
+    return init_chat_model(
+        model="gpt-4o", model_provider="openai", openai_api_key=openai_api_key
+    )
 
 
-pc_index = init_pinecone()
-retriever = init_retriever(pc_index)
-rag_llm = init_llm()
+# Initialize components lazily to avoid import-time errors
+pc_index = None
+retriever = None
+rag_llm = None
+
+
+def get_pc_index():
+    global pc_index
+    if pc_index is None:
+        pc_index = init_pinecone()
+    return pc_index
+
+
+def get_retriever():
+    global retriever
+    if retriever is None:
+        retriever = init_retriever(get_pc_index())
+    return retriever
+
+
+def get_rag_llm():
+    global rag_llm
+    if rag_llm is None:
+        rag_llm = init_llm()
+    return rag_llm
+
 
 rag_system_prompt = """You are an AI assistant specialized in construction and jobsite document analysis.
 
 # Instructions
-- Answer strictly in concise points, no explanations or introductory text. 
+- Answer strictly in concise points. 
 - Do not repeat or paraphrase the question.
 - Do not add context or commentary.
 - For questions that are ambiguous, provide all related information you can find regarding material type, specifications or measurements.
@@ -76,16 +114,18 @@ class State(TypedDict):
 # Define application steps
 def retrieve(state: State):
     print("--retrieve--")
-    if retriever is None:
+    current_retriever = get_retriever()
+    if current_retriever is None:
         print("Warning: Retriever is not initialized. Returning empty context.")
         return {"context": []}
-    retrieved_docs = retriever.invoke(state["question"])
+    retrieved_docs = current_retriever.invoke(state["question"])
     return {"context": retrieved_docs}
 
 
 def generate(state: State):
     print("--generate--")
-    if rag_llm is None:
+    current_llm = get_rag_llm()
+    if current_llm is None:
         return {
             "answer": "Error: LLM is not initialized. Please set OPENAI_API_KEY environment variable."
         }
@@ -94,7 +134,7 @@ def generate(state: State):
     messages = rag_prompt.invoke(
         {"question": state["question"], "context": docs_content}
     )
-    response = rag_llm.invoke(messages)
+    response = current_llm.invoke(messages)
     return {"answer": response.content}
 
 
