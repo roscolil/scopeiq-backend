@@ -20,9 +20,19 @@ class DocumentProgressData(BaseModel):
     processing_results: Optional[ProcessingResults] = None
 
 
+class DocumentUploadData(BaseModel):
+    document_id: str
+    processing_status: str
+    original_filename: str
+    sanitized_filename: str
+    s3_key: str
+    s3_url: str
+    message: str
+
+
 class DocumentUploadResponse(BaseModel):
     success: bool
-    data: Dict[str, Any]
+    data: DocumentUploadData
 
 
 class DocumentProgressResponse(BaseModel):

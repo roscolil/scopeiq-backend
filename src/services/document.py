@@ -1,4 +1,5 @@
 import os
+import re
 from typing import Dict, Any
 from pinecone import Pinecone
 from langchain_openai import OpenAIEmbeddings
@@ -61,6 +62,13 @@ class DocumentProcessingService:
         """Get document processing progress"""
         return self.progress_tracker.get_progress(document_id)
 
+    def sanitize_filename(self, filename: str) -> str:
+        """Sanitize filename for safe storage"""
+        sanitized = re.sub(r"\s+", "_", filename)  # Replace spaces with underscores
+        sanitized = re.sub(r"[^\w\-_.]", "", sanitized)  # Remove special chars
+        sanitized = re.sub(r"_{2,}", "_", sanitized)  # Replace multiple underscores
+        return sanitized.strip("_")  # Remove leading/trailing underscores
+
     def process_document(
         self,
         file_content: bytes,
@@ -75,7 +83,10 @@ class DocumentProcessingService:
             self._update_progress(document_id, "processing", 10, "Uploading to S3")
 
             filename = document_name or f"document_{document_id}.pdf"
-            s3_key = self.s3_service.generate_s3_key(company_id, project_id, filename)
+            sanitized_filename = self.sanitize_filename(filename)
+            s3_key = self.s3_service.generate_s3_key(
+                company_id, project_id, sanitized_filename
+            )
             s3_url = self.s3_service.upload_file(file_content, s3_key)
 
             # Stage 2: Extract text from PDF

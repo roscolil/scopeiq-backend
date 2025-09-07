@@ -10,6 +10,7 @@ from src.services.chat import chat_service
 from src.models.health import HealthResponse
 from src.models.document import (
     DocumentUploadResponse,
+    DocumentUploadData,
     DocumentProgressResponse,
     ProcessingResults,
 )
@@ -58,6 +59,14 @@ async def upload_document(
     # Generate document ID
     document_id = f"doc_{uuid.uuid4().hex[:12]}"
 
+    # Get original filename
+    original_filename = document_name or file.filename
+
+    # Sanitize filename for storage
+    sanitized_filename = document_processing_service.sanitize_filename(
+        original_filename
+    )
+
     # Start background processing
     background_tasks.add_task(
         document_processing_service.process_document,
@@ -65,23 +74,25 @@ async def upload_document(
         document_id,
         project_id,
         company_id,
-        document_name or file.filename,
+        original_filename,
     )
 
-    # Generate S3 key for response
+    # Generate S3 key using sanitized filename
     s3_service = document_processing_service.s3_service
-    s3_key = s3_service.generate_s3_key(company_id, project_id, file.filename)
+    s3_key = s3_service.generate_s3_key(company_id, project_id, sanitized_filename)
     s3_url = f"https://{s3_service.bucket_name}.s3.{s3_service.region_name}.amazonaws.com/{s3_key}"
 
     return DocumentUploadResponse(
         success=True,
-        data={
-            "document_id": document_id,
-            "processing_status": "processing",
-            "s3_key": s3_key,
-            "s3_url": s3_url,
-            "message": "Document uploaded and processing started",
-        },
+        data=DocumentUploadData(
+            document_id=document_id,
+            processing_status="processing",
+            original_filename=original_filename,
+            sanitized_filename=sanitized_filename,
+            s3_key=s3_key,
+            s3_url=s3_url,
+            message="Document uploaded and processing started",
+        ),
     )
 
 

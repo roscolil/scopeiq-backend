@@ -1,4 +1,5 @@
 # Use Python 3.11 slim image for smaller size
+# Note: Build with --platform linux/amd64 flag for AWS App Runner compatibility
 FROM python:3.11-slim
 
 # Set environment variables
