@@ -35,7 +35,7 @@ class DocumentProcessingService:
             return None
 
         embeddings = OpenAIEmbeddings(
-            model="text-embedding-3-small", openai_api_key=settings.OPENAI_API_KEY
+            model="text-embedding-3-large", openai_api_key=settings.OPENAI_API_KEY
         )
         return PineconeVectorStore(index=self.pc_index, embedding=embeddings)
 
@@ -131,7 +131,7 @@ class DocumentProcessingService:
                         }
                     )
 
-                self.vector_store.add_documents(all_splits)
+                self.vector_store.add_documents(all_splits, namespace=project_id)
 
             # Stage 5: Enhanced analysis (placeholder for construction-specific analysis)
             self._update_progress(

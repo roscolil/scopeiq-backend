@@ -31,12 +31,12 @@ def init_pinecone():
 def init_retriever(pc_index):
 
     embeddings = OpenAIEmbeddings(
-        model="text-embedding-3-small", openai_api_key=settings.OPENAI_API_KEY
+        model="text-embedding-3-large", openai_api_key=settings.OPENAI_API_KEY
     )
     vector_store = PineconeVectorStore(index=pc_index, embedding=embeddings)
     return vector_store.as_retriever(
         search_type="mmr",
-        search_kwargs={"k": 4, "score_threshold": 0.4},
+        search_kwargs={"k": 10},
     )
 
 
@@ -92,6 +92,7 @@ rag_system_prompt = """You are an AI assistant specialized in construction and j
 - For dimensional queries, reference specific measurements and specifications found in the analysis.
 - For spatial queries (adjacent, inside, north, south, etc), use the spatial relationship information to provide accurate location-based answers.
 - Base your answer on the specific information provided in the context.
+- If the context is empty, please mention it in your answer. Do not make up an answer.
 
 Context: 
 {context}"""
@@ -108,6 +109,7 @@ rag_prompt = ChatPromptTemplate.from_messages(
 class State(TypedDict):
     question: str
     context: List[Document]
+    project_id: str
     answer: str
 
 
@@ -118,7 +120,9 @@ def retrieve(state: State):
     if current_retriever is None:
         print("Warning: Retriever is not initialized. Returning empty context.")
         return {"context": []}
-    retrieved_docs = current_retriever.invoke(state["question"])
+    retrieved_docs = current_retriever.invoke(
+        state["question"], namespace=state["project_id"]
+    )
     return {"context": retrieved_docs}
 
 

@@ -17,7 +17,7 @@ class ChatService:
     ) -> Dict[str, Any]:
         """Process chat query with document context"""
 
-        response = await graph.ainvoke({"question": query})
+        response = await graph.ainvoke({"question": query, "project_id": project_id})
         if include_search_results:
             retrieved_docs = response["context"]
         else:
