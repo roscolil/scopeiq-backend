@@ -35,7 +35,7 @@ class DocumentProcessingService:
             return None
 
         embeddings = OpenAIEmbeddings(
-            model="text-embedding-3-large", openai_api_key=settings.OPENAI_API_KEY
+            model="text-embedding-3-small", openai_api_key=settings.OPENAI_API_KEY
         )
         return PineconeVectorStore(index=self.pc_index, embedding=embeddings)
 
@@ -105,12 +105,12 @@ class DocumentProcessingService:
             # Stage 3: Chunk text
             self._update_progress(document_id, "processing", 40, "Chunking text")
 
-            text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=2000,
-                chunk_overlap=200,
-                add_start_index=True,
-            )
-            all_splits = text_splitter.split_documents(pages)
+            # text_splitter = RecursiveCharacterTextSplitter(
+            #     chunk_size=2000,
+            #     chunk_overlap=200,
+            #     add_start_index=True,
+            # )
+            # all_splits = text_splitter.split_documents(pages)
 
             # Stage 4: Generate embeddings and store in vector store
             self._update_progress(
@@ -119,7 +119,7 @@ class DocumentProcessingService:
 
             if self.vector_store:
                 # Add metadata to chunks
-                for i, chunk in enumerate(all_splits):
+                for i, chunk in enumerate(pages):
                     chunk.metadata.update(
                         {
                             "document_id": document_id,
@@ -131,7 +131,7 @@ class DocumentProcessingService:
                         }
                     )
 
-                self.vector_store.add_documents(all_splits, namespace=project_id)
+                self.vector_store.add_documents(pages, namespace=project_id)
 
             # Stage 5: Enhanced analysis (placeholder for construction-specific analysis)
             self._update_progress(
@@ -146,8 +146,8 @@ class DocumentProcessingService:
 
             # Stage 6: Complete
             processing_results = {
-                "chunks_created": len(all_splits),
-                "embeddings_generated": len(all_splits),
+                "chunks_created": len(pages),
+                "embeddings_generated": len(pages),
                 "enhanced_analysis_completed": True,
                 "search_ready": True,
             }

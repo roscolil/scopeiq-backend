@@ -31,7 +31,7 @@ def init_pinecone():
 def init_retriever(pc_index):
 
     embeddings = OpenAIEmbeddings(
-        model="text-embedding-3-large", openai_api_key=settings.OPENAI_API_KEY
+        model="text-embedding-3-small", openai_api_key=settings.OPENAI_API_KEY
     )
     vector_store = PineconeVectorStore(index=pc_index, embedding=embeddings)
     return vector_store.as_retriever(
