@@ -1,6 +1,7 @@
 """API v1 router"""
 
 import uuid
+import asyncio
 from fastapi import APIRouter, BackgroundTasks, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
 
@@ -18,6 +19,19 @@ from src.models.chat import ChatRequest, ChatResponse
 from src.utils.validators import validate_file_upload
 
 router = APIRouter()
+
+
+async def process_document_background(
+    file_content: bytes,
+    document_id: str,
+    project_id: str,
+    company_id: str,
+    document_name: str = None,
+):
+    """Wrapper function to run async process_document in background task"""
+    await document_processing_service.process_document(
+        file_content, document_id, project_id, company_id, document_name
+    )
 
 
 # Health Check Endpoint
@@ -48,7 +62,7 @@ async def upload_document(
     company_id: str = Form(...),
     document_name: str = Form(None),
 ):
-    """Upload PDF documents for AI processing and indexing"""
+    """Upload PDF, DOC/DOCX, and TXT documents for AI processing and indexing"""
 
     # Validate file upload
     validate_file_upload(file)
@@ -69,7 +83,7 @@ async def upload_document(
 
     # Start background processing
     background_tasks.add_task(
-        document_processing_service.process_document,
+        process_document_background,
         file_content,
         document_id,
         project_id,

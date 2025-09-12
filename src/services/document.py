@@ -1,10 +1,14 @@
 import os
 import re
+import asyncio
+from pathlib import Path
 from typing import Dict, Any
 from pinecone import Pinecone
 from langchain_openai import OpenAIEmbeddings
 from langchain_pinecone.vectorstores import PineconeVectorStore
 from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.document_loaders import UnstructuredWordDocumentLoader
+from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from src.services.progress import InMemoryProgressTracker
 from src.services.s3 import S3Service
@@ -69,7 +73,60 @@ class DocumentProcessingService:
         sanitized = re.sub(r"_{2,}", "_", sanitized)  # Replace multiple underscores
         return sanitized.strip("_")  # Remove leading/trailing underscores
 
-    def process_document(
+    def _detect_file_type(self, filename: str) -> str:
+        """Detect file type based on filename extension"""
+        if not filename:
+            return "pdf"  # Default to PDF if no filename
+
+        filename_lower = filename.lower()
+        if filename_lower.endswith((".doc", ".docx")):
+            return "docx"
+        elif filename_lower.endswith(".pdf"):
+            return "pdf"
+        elif filename_lower.endswith(".txt"):
+            return "txt"
+        else:
+            return "pdf"  # Default to PDF for unknown types
+
+    async def _load_docx_document(self, temp_file_path: str):
+        """Load DOC/DOCX document using UnstructuredWordDocumentLoader"""
+        loader = UnstructuredWordDocumentLoader(
+            temp_file_path,
+            include_page_breaks=True,
+        )
+
+        file_name = Path(temp_file_path).name
+        docx_pages = []
+        async for page in loader.alazy_load():
+            page.metadata["source"] = file_name
+            page.metadata["file_type"] = "docx"
+            docx_pages.append(page)
+
+        return docx_pages
+
+    async def _load_pdf_document(self, temp_file_path: str):
+        """Load PDF document using PyPDFLoader"""
+        loader = PyPDFLoader(temp_file_path)
+        file_name = Path(temp_file_path).name
+        pages = []
+        async for page in loader.alazy_load():
+            page.metadata["source"] = file_name
+            page.metadata["file_type"] = "pdf"
+            pages.append(page)
+        return pages
+
+    async def _load_txt_document(self, temp_file_path: str):
+        """Load TXT document using TextLoader"""
+        loader = TextLoader(temp_file_path)
+        file_name = Path(temp_file_path).name
+        pages = []
+        async for page in loader.alazy_load():
+            page.metadata["source"] = file_name
+            page.metadata["file_type"] = "txt"
+            pages.append(page)
+        return pages
+
+    async def process_document(
         self,
         file_content: bytes,
         document_id: str,
@@ -82,35 +139,54 @@ class DocumentProcessingService:
             # Stage 1: Upload to S3
             self._update_progress(document_id, "processing", 10, "Uploading to S3")
 
-            filename = document_name or f"document_{document_id}.pdf"
+            # Detect file type and set appropriate extension
+            file_type = self._detect_file_type(document_name)
+            if file_type == "docx":
+                default_extension = "docx"
+            elif file_type == "txt":
+                default_extension = "txt"
+            else:
+                default_extension = "pdf"
+            filename = document_name or f"document_{document_id}.{default_extension}"
             sanitized_filename = self.sanitize_filename(filename)
             s3_key = self.s3_service.generate_s3_key(
                 company_id, project_id, sanitized_filename
             )
             s3_url = self.s3_service.upload_file(file_content, s3_key)
 
-            # Stage 2: Extract text from PDF
-            self._update_progress(
-                document_id, "processing", 20, "Extracting text from PDF"
-            )
+            # Stage 2: Extract text from document
+            if file_type == "docx":
+                extraction_stage = "Extracting text from DOC/DOCX"
+            elif file_type == "txt":
+                extraction_stage = "Extracting text from TXT"
+            else:
+                extraction_stage = "Extracting text from PDF"
+            self._update_progress(document_id, "processing", 20, extraction_stage)
 
             # Save file temporarily for processing
-            temp_file_path = f"/tmp/{document_id}.pdf"
+            temp_file_path = f"/tmp/{document_id}.{default_extension}"
             with open(temp_file_path, "wb") as f:
                 f.write(file_content)
 
-            loader = PyPDFLoader(temp_file_path)
-            pages = loader.load()
+            # Load document based on file type
+            if file_type == "docx":
+                pages = await self._load_docx_document(temp_file_path)
+            elif file_type == "txt":
+                pages = await self._load_txt_document(temp_file_path)
+            else:
+                pages = await self._load_pdf_document(temp_file_path)
 
             # Stage 3: Chunk text
             self._update_progress(document_id, "processing", 40, "Chunking text")
 
-            # text_splitter = RecursiveCharacterTextSplitter(
-            #     chunk_size=2000,
-            #     chunk_overlap=200,
-            #     add_start_index=True,
-            # )
-            # all_splits = text_splitter.split_documents(pages)
+            if default_extension in ["docx", "txt"]:
+                # chunk docx and txt files as pdf is already paged
+                text_splitter = RecursiveCharacterTextSplitter(
+                    chunk_size=2000,
+                    chunk_overlap=200,
+                    add_start_index=True,
+                )
+                pages = text_splitter.split_documents(pages)
 
             # Stage 4: Generate embeddings and store in vector store
             self._update_progress(
@@ -133,18 +209,7 @@ class DocumentProcessingService:
 
                 self.vector_store.add_documents(pages, namespace=project_id)
 
-            # Stage 5: Enhanced analysis (placeholder for construction-specific analysis)
-            self._update_progress(
-                document_id, "processing", 80, "Performing enhanced analysis"
-            )
-
-            # Here you would add construction-specific analysis like:
-            # - Extract doors, windows, rooms
-            # - Identify materials and specifications
-            # - Parse measurements and dimensions
-            # For now, we'll mark as completed
-
-            # Stage 6: Complete
+            # Stage 5: Complete
             processing_results = {
                 "chunks_created": len(pages),
                 "embeddings_generated": len(pages),
