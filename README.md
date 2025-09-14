@@ -80,3 +80,30 @@ docker run -p 8000:8000 --env-file .env scopeiq-ai-backend
 # Production server
 uvicorn src.app.main:app --host 0.0.0.0 --port 8000 --workers 4
 ```
+
+### Initialize DynamoDB Tables
+```bash
+# Create tables
+python setup_dynamodb.py
+```
+
+## **Data Model**
+
+### Abbreviations Table
+- **Primary Key**: `id` (String)
+- **Attributes**: 
+  - `abbreviation` (String)
+  - `full_form` (String)
+  - `created_at` (DateTime)
+  - `updated_at` (DateTime)
+- **Global Secondary Index**: `abbreviation-index` on `abbreviation`
+
+### Categories Table
+- **Primary Key**: `id` (String)
+- **Attributes**:
+  - `name` (String)
+  - `description` (String, nullable)
+  - `parent_id` (String, nullable)
+  - `created_at` (DateTime)
+  - `updated_at` (DateTime)
+- **Global Secondary Index**: `parent-id-index` on `parent_id`

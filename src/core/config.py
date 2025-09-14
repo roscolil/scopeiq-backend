@@ -27,8 +27,12 @@ class Settings(BaseSettings):
     # AWS Configuration
     AWS_ACCESS_KEY_ID: str = Field(default="", env="AWS_ACCESS_KEY_ID")
     AWS_SECRET_ACCESS_KEY: str = Field(default="", env="AWS_SECRET_ACCESS_KEY")
-    AWS_REGION: str = Field(default="us-east-1", env="AWS_REGION")
+    AWS_REGION: str = Field(default="ap-southeast-2", env="AWS_REGION")
     S3_BUCKET_NAME: str = Field(default="", env="S3_BUCKET_NAME")
+
+    # DynamoDB Configuration
+    USE_DYNAMODB: bool = Field(default=True, env="USE_DYNAMODB")
+    DYNAMODB_ENDPOINT_URL: str = Field(default="", env="DYNAMODB_ENDPOINT_URL")
 
     # Pinecone Configuration
     PINECONE_API_KEY: str = Field(default="", env="PINECONE_API_KEY")
@@ -66,6 +70,7 @@ def sync_settings_to_env():
         "AWS_ACCESS_KEY_ID": settings.AWS_ACCESS_KEY_ID,
         "AWS_SECRET_ACCESS_KEY": settings.AWS_SECRET_ACCESS_KEY,
         "AWS_REGION": settings.AWS_REGION,
+        "AWS_DEFAULT_REGION": settings.AWS_REGION,  # PynamoDB expects this
         "S3_BUCKET_NAME": settings.S3_BUCKET_NAME,
         "LANGSMITH_API_KEY": settings.LANGSMITH_API_KEY,
         "LANGCHAIN_PROJECT": settings.LANGCHAIN_PROJECT,

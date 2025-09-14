@@ -17,8 +17,14 @@ from src.models.document import (
 )
 from src.models.chat import ChatRequest, ChatResponse
 from src.utils.validators import validate_file_upload
+from src.api.abbreviation_router import router as abbreviation_router
+from src.api.category_router import router as category_router
 
 router = APIRouter()
+
+# Include abbreviation and category routers
+router.include_router(abbreviation_router)
+router.include_router(category_router)
 
 
 async def process_document_background(
