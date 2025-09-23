@@ -29,18 +29,13 @@ class HealthService:
             return False
 
     def check_openai_health(self) -> bool:
-        """Check if OpenAI API is accessible"""
-        try:
-            openai_api_key = os.environ.get("OPENAI_API_KEY")
-            if not openai_api_key:
-                return False
-
-            embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
-            # Simple test embedding
-            embeddings.embed_query("test")
-            return True
-        except Exception:
+        """Check if OpenAI API key is configured"""
+        openai_api_key = os.environ.get("OPENAI_API_KEY")
+        if not openai_api_key:
             return False
+
+        # Basic validation: OpenAI API keys start with 'sk-' and are typically 51+ characters
+        return openai_api_key.startswith("sk-") and len(openai_api_key) >= 51
 
     def get_uptime(self) -> int:
         """Get server uptime in seconds"""
