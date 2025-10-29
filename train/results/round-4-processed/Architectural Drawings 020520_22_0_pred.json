@@ -1,0 +1,145 @@
+[
+  {
+    "x1": 502.52557,
+    "y1": 1168.23511,
+    "x2": 932.76605,
+    "y2": 1314.68689,
+    "confidence": 0.76749,
+    "row_num": null,
+    "macro_col_num": null,
+    "sub_col_num": null,
+    "meta": null
+  },
+  {
+    "x1": 477.37515,
+    "y1": 695.323,
+    "x2": 1357.0824,
+    "y2": 840.94409,
+    "confidence": 0.72607,
+    "row_num": 2,
+    "macro_col_num": 0,
+    "sub_col_num": 1,
+    "meta": null
+  },
+  {
+    "x1": 434.42575,
+    "y1": 919.95868,
+    "x2": 1206.79456,
+    "y2": 1070.80005,
+    "confidence": 0.67554,
+    "row_num": 3,
+    "macro_col_num": 0,
+    "sub_col_num": 1,
+    "meta": null
+  },
+  {
+    "x1": 45.58185,
+    "y1": 247.12357,
+    "x2": 483.91022,
+    "y2": 301.28555,
+    "confidence": 0.67174,
+    "row_num": null,
+    "macro_col_num": null,
+    "sub_col_num": null,
+    "meta": null
+  },
+  {
+    "x1": 467.24387,
+    "y1": 421.53137,
+    "x2": 1194.9093,
+    "y2": 594.97217,
+    "confidence": 0.62951,
+    "row_num": 1,
+    "macro_col_num": 0,
+    "sub_col_num": 1,
+    "meta": null
+  },
+  {
+    "x1": 37.60204,
+    "y1": 680.61047,
+    "x2": 517.4408,
+    "y2": 818.755,
+    "confidence": 0.58753,
+    "row_num": 2,
+    "macro_col_num": 0,
+    "sub_col_num": 0,
+    "meta": null
+  },
+  {
+    "x1": 510.172,
+    "y1": 197.71542,
+    "x2": 997.75867,
+    "y2": 349.30502,
+    "confidence": 0.57679,
+    "row_num": null,
+    "macro_col_num": null,
+    "sub_col_num": null,
+    "meta": null
+  },
+  {
+    "x1": 78.34946,
+    "y1": 526.20935,
+    "x2": 147.72443,
+    "y2": 593.49194,
+    "confidence": 0.48268,
+    "row_num": 1,
+    "macro_col_num": 0,
+    "sub_col_num": 0,
+    "meta": null
+  },
+  {
+    "x1": 57.0958,
+    "y1": 440.33463,
+    "x2": 175.99437,
+    "y2": 544.26428,
+    "confidence": 0.4578,
+    "row_num": 1,
+    "macro_col_num": 0,
+    "sub_col_num": 0,
+    "meta": null
+  },
+  {
+    "x1": 37.48314,
+    "y1": 915.98169,
+    "x2": 513.74707,
+    "y2": 1072.08459,
+    "confidence": 0.45652,
+    "row_num": 3,
+    "macro_col_num": 0,
+    "sub_col_num": 0,
+    "meta": null
+  },
+  {
+    "x1": 7.98051,
+    "y1": 142.01212,
+    "x2": 53.0489,
+    "y2": 197.02055,
+    "confidence": 0.33336,
+    "row_num": null,
+    "macro_col_num": null,
+    "sub_col_num": null,
+    "meta": null
+  },
+  {
+    "x1": 7.92043,
+    "y1": 1150.15564,
+    "x2": 50.77758,
+    "y2": 1211.71838,
+    "confidence": 0.33287,
+    "row_num": null,
+    "macro_col_num": null,
+    "sub_col_num": null,
+    "meta": null
+  },
+  {
+    "x1": 75.94077,
+    "y1": 1003.3299,
+    "x2": 148.25266,
+    "y2": 1090.65942,
+    "confidence": 0.3238,
+    "row_num": 3,
+    "macro_col_num": 0,
+    "sub_col_num": 0,
+    "meta": null
+  }
+]
