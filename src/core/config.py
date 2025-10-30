@@ -50,6 +50,17 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE: int = Field(default=10 * 1024 * 1024, env="MAX_FILE_SIZE")  # 10MB
     ALLOWED_FILE_TYPES: List[str] = Field(default=[".pdf"], env="ALLOWED_FILE_TYPES")
 
+    # Vision Model Configuration
+    VLM_MODEL_NAME: str = Field(
+        default="qwen3-vl-235b-a22b-instruct", env="VLM_MODEL_NAME"
+    )
+    VLM_BASE_URL: str = Field(
+        default="https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+        env="VLM_BASE_URL",
+    )
+    DASHSCOPE_API_KEY: str = Field(default="", env="DASHSCOPE_API_KEY")
+    YOLO_MODEL_PATH: str = Field(default="yolo11n.pt", env="YOLO_MODEL_PATH")
+
     model_config = {
         "env_file": ".env",
         "case_sensitive": True,
