@@ -1,160 +1,187 @@
-"""TEMP IMPLEMENTATION: Page type classifier for PDF pages"""
+"""Page type classifier for PDF pages using Qwen vision model"""
 
-from typing import Dict, Any, Literal
+from typing import Literal
 from PIL import Image
-import numpy as np
+import base64
+import io
 from langchain_core.documents import Document
+from langchain.chat_models import init_chat_model
+from src.core.config import settings
 
 
 PageType = Literal["text", "drawing"]
 
 
 class PageClassifier:
-    """Classify PDF pages as text-based or drawing/legend-based"""
+    """Classify PDF pages as text-based or drawing/legend-based using Qwen vision model"""
 
     def __init__(self):
-        # Thresholds for classification
-        self.text_density_threshold = 0.05  # Minimum text density ratio
-        self.drawing_complexity_threshold = 0.3  # Minimum drawing complexity
+        """Initialize the page classifier with Qwen LLM"""
+        self._init_llm()
 
     def classify_page(
         self, page_document: Document, page_image: Image.Image = None
     ) -> PageType:
         """
-        Classify a page as 'text' or 'drawing' based on content analysis.
+        Classify a page as 'text' or 'drawing' based on visual analysis.
 
         Args:
             page_document: LangChain Document with page content
-            page_image: Optional PIL Image of the page for visual analysis
+            page_image: PIL Image of the page for visual analysis
 
         Returns:
             'text' or 'drawing'
         """
-        # Primary classification: based on text content
-        text_content = page_document.page_content.strip()
+        if page_image is None:
+            return "text"  # Default if no image provided
 
-        # If minimal text, likely a drawing page
-        if len(text_content) < 100:
-            return "drawing"
+        return self._classify_with_llm(page_image)
 
-        # Analyze text density and structure
-        text_metrics = self._analyze_text_content(text_content)
+    def _init_llm(self):
+        """Initialize the Qwen LLM for page classification"""
+        try:
+            self.llm = init_chat_model(
+                "qwen2.5-vl-3b-instruct",
+                model_provider="openai",
+                base_url=settings.VLM_BASE_URL,
+                api_key=settings.DASHSCOPE_API_KEY,
+            )
+        except Exception as e:
+            print(f"Warning: Failed to initialize Qwen LLM: {e}")
+            self.llm = None
 
-        # If image provided, also analyze visual characteristics
-        if page_image is not None:
-            visual_metrics = self._analyze_visual_content(page_image)
-            combined_score = self._combine_metrics(text_metrics, visual_metrics)
-        else:
-            combined_score = text_metrics.get("drawing_score", 0.0)
-
-        # Classify based on combined score
-        # Higher score indicates drawing page
-        if combined_score > 0.5:
-            return "drawing"
-        else:
-            return "text"
-
-    def _analyze_text_content(self, text: str) -> Dict[str, Any]:
+    def _classify_with_llm(self, page_image: Image.Image) -> PageType:
         """
-        Analyze text content characteristics.
-
-        Returns:
-            Dictionary with analysis metrics
-        """
-        # Text length
-        text_length = len(text)
-
-        # Line count (indicating structured text vs sparse annotations)
-        lines = text.split("\n")
-        line_count = len(lines)
-        avg_line_length = text_length / max(line_count, 1)
-
-        # Check for common drawing/legend indicators
-        drawing_keywords = [
-            "legend",
-            "symbol",
-            "scale",
-            "drawing",
-            "plan",
-            "section",
-            "detail",
-            "note:",
-            "see note",
-        ]
-        drawing_keyword_count = sum(
-            1 for keyword in drawing_keywords if keyword.lower() in text.lower()
-        )
-
-        # Calculate drawing score
-        # Lower text density, shorter lines, and drawing keywords suggest drawing page
-        text_density_score = min(text_length / 2000.0, 1.0)  # Normalize to 0-1
-        drawing_score = (
-            (1 - text_density_score) * 0.4  # Inverse text density
-            + (drawing_keyword_count / len(drawing_keywords)) * 0.3  # Keyword presence
-            + (1 - min(avg_line_length / 100.0, 1.0)) * 0.3  # Short lines
-        )
-
-        return {
-            "text_length": text_length,
-            "line_count": line_count,
-            "avg_line_length": avg_line_length,
-            "drawing_keyword_count": drawing_keyword_count,
-            "drawing_score": drawing_score,
-        }
-
-    def _analyze_visual_content(self, image: Image.Image) -> Dict[str, Any]:
-        """
-        Analyze visual characteristics of the page image.
+        Classify page using Qwen LLM vision model.
 
         Args:
-            image: PIL Image of the page
+            page_image: PIL Image of the page
 
         Returns:
-            Dictionary with visual analysis metrics
+            'text' or 'drawing'
         """
-        # Convert to grayscale for analysis
-        gray = image.convert("L")
-        img_array = np.array(gray)
+        if self.llm is None:
+            return "text"  # Default fallback
 
-        # Calculate edge density (drawings typically have many edges)
-        # Simple edge detection using gradient
-        edges = np.gradient(img_array.astype(float))
-        edge_magnitude = np.sqrt(edges[0] ** 2 + edges[1] ** 2)
-        edge_density = np.mean(edge_magnitude > 30) / 255.0  # Threshold and normalize
+        try:
+            # Convert image to base64
+            image_base64 = self._image_to_base64(page_image)
 
-        # Calculate complexity (variance in pixel values)
-        pixel_variance = np.var(img_array) / (255.0**2)  # Normalize
+            # Create message for LLM
+            message = {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Does this page contain technical drawings? Return true if it does, or false otherwise.",
+                    },
+                    {
+                        "type": "image",
+                        "source_type": "base64",
+                        "data": image_base64,
+                        "mime_type": "image/png",
+                    },
+                ],
+            }
 
-        # Calculate drawing score based on visual characteristics
-        # Higher edge density and complexity suggest drawing
-        drawing_score = edge_density * 0.5 + pixel_variance * 0.5
+            # Get LLM response
+            response = self.llm.invoke([message])
 
-        return {
-            "edge_density": edge_density,
-            "pixel_variance": pixel_variance,
-            "drawing_score": drawing_score,
-        }
+            # Extract result
+            is_drawing = self._extract_drawing_result(response)
 
-    def _combine_metrics(
-        self, text_metrics: Dict[str, Any], visual_metrics: Dict[str, Any]
-    ) -> float:
+            return "drawing" if is_drawing else "text"
+
+        except Exception as e:
+            print(f"Warning: LLM classification failed: {e}")
+            return "text"  # Default fallback
+
+    def _extract_drawing_result(self, response) -> bool:
         """
-        Combine text and visual metrics into final classification score.
+        Extract drawing classification result from LLM text response
 
         Args:
-            text_metrics: Metrics from text analysis
-            visual_metrics: Metrics from visual analysis
+            response: LLM response object with content attribute
 
         Returns:
-            Combined drawing score (0-1, higher = more likely drawing)
+            True if classified as drawing, False otherwise
         """
-        text_score = text_metrics.get("drawing_score", 0.0)
-        visual_score = visual_metrics.get("drawing_score", 0.0)
+        # Primary: check for content attribute with string parsing
+        if hasattr(response, "content") and response.content:
+            content_str = str(response.content).strip().lower()
+            # Handle various string representations of boolean
+            if content_str in ["true", "1", "yes", "drawing"]:
+                return True
+            if content_str in ["false", "0", "no", "text"]:
+                return False
 
-        # Weighted combination (can be adjusted)
-        combined = text_score * 0.6 + visual_score * 0.4
+        # Fallback: check raw response structure
+        if hasattr(response, "raw"):
+            try:
+                raw_str = str(response.raw).lower()
+                if "true" in raw_str or "drawing" in raw_str:
+                    return True
+                if "false" in raw_str or "text" in raw_str:
+                    return False
+            except Exception:
+                pass
 
-        return combined
+        # Default: not a drawing
+        return False
+
+    def _image_to_base64(self, image: Image.Image) -> str:
+        """
+        Convert PIL Image to base64 PNG string.
+        Resizes image long side to 1024 pixels to optimize for LLM processing.
+
+        Args:
+            image: PIL Image
+
+        Returns:
+            Base64 encoded PNG string
+        """
+        # Resize image if larger than max_size
+        image = self._resize_image_if_needed(image, max_size=1024)
+
+        # Convert PIL Image to PNG bytes
+        png_buffer = io.BytesIO()
+        image.save(png_buffer, format="PNG")
+        png_bytes = png_buffer.getvalue()
+
+        # Convert PNG bytes to base64
+        base64_string = base64.b64encode(png_bytes).decode("utf-8")
+
+        return base64_string
+
+    def _resize_image_if_needed(
+        self, image: Image.Image, max_size: int = 1024
+    ) -> Image.Image:
+        """
+        Resize image if its longest side exceeds max_size, maintaining aspect ratio.
+
+        Args:
+            image: PIL Image to resize
+            max_size: Maximum size for the longest side
+
+        Returns:
+            Resized PIL Image (or original if no resize needed)
+        """
+        width, height = image.size
+        longest_side = max(width, height)
+
+        if longest_side <= max_size:
+            return image
+
+        # Calculate new dimensions maintaining aspect ratio
+        if width > height:
+            new_width = max_size
+            new_height = int(height * (max_size / width))
+        else:
+            new_height = max_size
+            new_width = int(width * (max_size / height))
+
+        # Resize using high-quality resampling
+        return image.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
 
 # Global classifier instance
