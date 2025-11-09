@@ -25,6 +25,10 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy YOLO weights explicitly so they are always present
+COPY train/models/round_4.pt /app/train/models/round_4.pt
+ENV YOLO_MODEL_PATH=/app/train/models/round_4.pt
+
 # Copy the entire project
 COPY . .
 
