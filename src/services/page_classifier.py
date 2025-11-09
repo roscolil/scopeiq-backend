@@ -41,7 +41,7 @@ class PageClassifier:
         """Initialize the Qwen LLM for page classification"""
         try:
             self.llm = init_chat_model(
-                "qwen2.5-vl-3b-instruct",
+                "qwen3-vl-8b-instruct",
                 model_provider="openai",
                 base_url=settings.VLM_BASE_URL,
                 api_key=settings.DASHSCOPE_API_KEY,
@@ -73,7 +73,21 @@ class PageClassifier:
                 "content": [
                     {
                         "type": "text",
-                        "text": "Does this page contain technical drawings? Return true if it does, or false otherwise.",
+                        "text": """Classify the page if it is a full-page drawing? Return true if it is, or false otherwise.
+
+Drawing
+- If majority of the page is an architectural plan, engineering schematic, MEP layout, construction drawing, etc
+- Contains plan views or schematic layouts — orthogonal top-down or sectional representations of buildings, rooms, or mechanical systems.
+- Scale indicators or dimensions
+- Return true
+
+Non-drawing
+- Contains mostly text 
+- Table of materials, schedules, etc.
+- Table of schedules are considered non-drawings, even if they contain smaller representations
+- Return false
+
+If the page contains mostly text with inline drawings, return false""",
                     },
                     {
                         "type": "image",
