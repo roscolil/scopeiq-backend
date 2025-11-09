@@ -2,7 +2,8 @@ import os
 import re
 import asyncio
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, List, Tuple
+from PIL import Image
 from pinecone import Pinecone
 from langchain_openai import OpenAIEmbeddings
 from langchain_pinecone.vectorstores import PineconeVectorStore
@@ -10,8 +11,12 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.document_loaders import UnstructuredWordDocumentLoader
 from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_core.documents import Document
+from pdf2image import convert_from_path
 from src.services.progress import InMemoryProgressTracker
 from src.services.s3 import S3Service
+from src.services.vision_pipeline import vision_pipeline_service
+from src.services.page_classifier import page_classifier
 from src.core.config import settings
 
 
@@ -39,7 +44,7 @@ class DocumentProcessingService:
             return None
 
         embeddings = OpenAIEmbeddings(
-            model="text-embedding-3-small", openai_api_key=settings.OPENAI_API_KEY
+            model="text-embedding-3-large", openai_api_key=settings.OPENAI_API_KEY
         )
         return PineconeVectorStore(index=self.pc_index, embedding=embeddings)
 
@@ -104,16 +109,73 @@ class DocumentProcessingService:
 
         return docx_pages
 
-    async def _load_pdf_document(self, temp_file_path: str):
-        """Load PDF document using PyPDFLoader"""
+    async def _load_pdf_document(
+        self,
+        temp_file_path: str,
+        document_id: str,
+        project_id: str,
+        company_id: str,
+    ) -> Tuple[List[Document], List[Document]]:
+        """
+        Load PDF document and classify pages into text and drawing pages.
+
+        Returns:
+            Tuple of (text_pages, drawing_pages)
+        """
+        # Load text content from PDF
         loader = PyPDFLoader(temp_file_path)
         file_name = Path(temp_file_path).name
-        pages = []
+        text_pages = []
         async for page in loader.alazy_load():
             page.metadata["source"] = file_name
             page.metadata["file_type"] = "pdf"
-            pages.append(page)
-        return pages
+            text_pages.append(page)
+
+        # Convert PDF pages to images for classification and vision processing
+        # Run in executor to avoid blocking
+        loop = asyncio.get_event_loop()
+        page_images = await loop.run_in_executor(
+            None, convert_from_path, temp_file_path
+        )
+
+        # Classify pages and route to appropriate pipelines
+        text_pages_list = []
+        drawing_pages_list = []
+
+        for idx, (page_doc, page_image) in enumerate(zip(text_pages, page_images)):
+            # Classify page type
+            page_type = page_classifier.classify_page(page_doc, page_image)
+
+            # Get page number (0-indexed from PDF)
+            page_number = idx + 1
+
+            # Base metadata for the page
+            base_metadata = {
+                **page_doc.metadata,
+                "document_id": document_id,
+                "project_id": project_id,
+                "company_id": company_id,
+                "page_number": page_number,
+            }
+
+            print(f"Processing Page {page_number}: {page_type}")
+
+            if page_type == "drawing":
+                # Process through vision pipeline
+                processed_doc = await vision_pipeline_service.process_drawing_page(
+                    page_image=page_image,
+                    page_number=page_number,
+                    document_id=document_id,
+                    metadata=base_metadata,
+                )
+                drawing_pages_list.append(processed_doc)
+            else:
+                # Use text page as-is (will be chunked later if needed)
+                page_doc.metadata.update(base_metadata)
+                page_doc.metadata["page_type"] = "text"
+                text_pages_list.append(page_doc)
+
+        return text_pages_list, drawing_pages_list
 
     async def _load_txt_document(self, temp_file_path: str):
         """Load TXT document using TextLoader"""
@@ -171,31 +233,50 @@ class DocumentProcessingService:
             # Load document based on file type
             if file_type == "docx":
                 pages = await self._load_docx_document(temp_file_path)
+                drawing_pages = []
             elif file_type == "txt":
                 pages = await self._load_txt_document(temp_file_path)
+                drawing_pages = []
             else:
-                pages = await self._load_pdf_document(temp_file_path)
+                # PDF: separate text and drawing pages
+                pages, drawing_pages = await self._load_pdf_document(
+                    temp_file_path, document_id, project_id, company_id
+                )
 
-            # Stage 3: Chunk text
-            self._update_progress(document_id, "processing", 40, "Chunking text")
+            # Stage 3: Process drawing pages through vision pipeline
+            if drawing_pages:
+                self._update_progress(
+                    document_id,
+                    "processing",
+                    35,
+                    f"Processing {len(drawing_pages)} drawing pages through vision pipeline",
+                )
+                # Drawing pages are already processed by vision pipeline
+
+            # Stage 4: Chunk text pages
+            self._update_progress(document_id, "processing", 40, "Chunking text pages")
+
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=2000,
+                chunk_overlap=200,
+                add_start_index=True,
+            )
 
             if default_extension in ["docx", "txt"]:
                 # chunk docx and txt files as pdf is already paged
-                text_splitter = RecursiveCharacterTextSplitter(
-                    chunk_size=2000,
-                    chunk_overlap=200,
-                    add_start_index=True,
-                )
                 pages = text_splitter.split_documents(pages)
 
-            # Stage 4: Generate embeddings and store in vector store
+            # Combine all pages (text and drawing)
+            all_pages = pages + drawing_pages
+
+            # Stage 5: Generate embeddings and store in vector store
             self._update_progress(
                 document_id, "processing", 60, "Generating embeddings"
             )
 
             if self.vector_store:
-                # Add metadata to chunks
-                for i, chunk in enumerate(pages):
+                # Add metadata to all chunks/pages
+                for i, chunk in enumerate(all_pages):
                     chunk.metadata.update(
                         {
                             "document_id": document_id,
@@ -207,9 +288,9 @@ class DocumentProcessingService:
                         }
                     )
 
-                self.vector_store.add_documents(pages, namespace=project_id)
+                self.vector_store.add_documents(all_pages, namespace=project_id)
 
-            # Stage 5: Complete
+            # Stage 6: Complete
             processing_results = {
                 "chunks_created": len(pages),
                 "embeddings_generated": len(pages),
