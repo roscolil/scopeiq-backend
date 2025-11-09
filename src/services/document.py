@@ -44,7 +44,7 @@ class DocumentProcessingService:
             return None
 
         embeddings = OpenAIEmbeddings(
-            model="text-embedding-3-small", openai_api_key=settings.OPENAI_API_KEY
+            model="text-embedding-3-large", openai_api_key=settings.OPENAI_API_KEY
         )
         return PineconeVectorStore(index=self.pc_index, embedding=embeddings)
 
@@ -158,6 +158,8 @@ class DocumentProcessingService:
                 "page_number": page_number,
             }
 
+            print(f"Processing Page {page_number}: {page_type}")
+
             if page_type == "drawing":
                 # Process through vision pipeline
                 processed_doc = await vision_pipeline_service.process_drawing_page(
@@ -254,13 +256,14 @@ class DocumentProcessingService:
             # Stage 4: Chunk text pages
             self._update_progress(document_id, "processing", 40, "Chunking text pages")
 
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=2000,
+                chunk_overlap=200,
+                add_start_index=True,
+            )
+
             if default_extension in ["docx", "txt"]:
                 # chunk docx and txt files as pdf is already paged
-                text_splitter = RecursiveCharacterTextSplitter(
-                    chunk_size=2000,
-                    chunk_overlap=200,
-                    add_start_index=True,
-                )
                 pages = text_splitter.split_documents(pages)
 
             # Combine all pages (text and drawing)
