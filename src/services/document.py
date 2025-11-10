@@ -28,6 +28,11 @@ def clamp_linebreaks(text: str, max_consecutive: int = 3) -> str:
     return re.sub(pattern, replacement, text)
 
 
+def remove_contiguous_spaces(text: str) -> str:
+    """Replace runs of spaces with a single space."""
+    return re.sub(r" {2,}", " ", text)
+
+
 class DocumentProcessingService:
     def __init__(self):
         self.pc_index = self._init_pinecone()
@@ -184,7 +189,11 @@ class DocumentProcessingService:
                             #     pymupdf4llm.to_markdown(single_page_doc)
                             # ),
                             # TODO: Fix this to something more useful (pure text extraction)
-                            page_content=single_page_doc.get_text(sort=True),
+                            page_content=clamp_linebreaks(
+                                remove_contiguous_spaces(
+                                    single_page_doc[0].get_text(sort=True)
+                                )
+                            ),
                             metadata={**base_metadata, "page_type": "text"},
                         )
                         text_pages_list.append(text_page_doc)
