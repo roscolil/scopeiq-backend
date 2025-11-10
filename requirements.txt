@@ -21,3 +21,6 @@ Pillow==10.4.0
 numpy==1.26.4
 scikit-learn==1.5.2
 ultralytics==8.3.0
+pymupdf==1.26.6
+pymupdf4llm==0.1.9
+pymupdf-layout==1.26.6

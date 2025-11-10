@@ -2,22 +2,30 @@ import os
 import re
 import asyncio
 from pathlib import Path
+from functools import partial
 from typing import Dict, Any, List, Tuple
 from PIL import Image
 from pinecone import Pinecone
 from langchain_openai import OpenAIEmbeddings
 from langchain_pinecone.vectorstores import PineconeVectorStore
-from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.document_loaders import UnstructuredWordDocumentLoader
 from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 from pdf2image import convert_from_path
+import pymupdf
+import pymupdf4llm
 from src.services.progress import InMemoryProgressTracker
 from src.services.s3 import S3Service
 from src.services.vision_pipeline import vision_pipeline_service
 from src.services.page_classifier import page_classifier
 from src.core.config import settings
+
+
+def clamp_linebreaks(text: str, max_consecutive: int = 3) -> str:
+    pattern = r"\n{" + str(max_consecutive + 1) + r",}"
+    replacement = "\n" * max_consecutive
+    return re.sub(pattern, replacement, text)
 
 
 class DocumentProcessingService:
@@ -122,58 +130,66 @@ class DocumentProcessingService:
         Returns:
             Tuple of (text_pages, drawing_pages)
         """
-        # Load text content from PDF
-        loader = PyPDFLoader(temp_file_path)
         file_name = Path(temp_file_path).name
-        text_pages = []
-        async for page in loader.alazy_load():
-            page.metadata["source"] = file_name
-            page.metadata["file_type"] = "pdf"
-            text_pages.append(page)
+        text_pages_list: List[Document] = []
+        drawing_pages_list: List[Document] = []
 
         # Convert PDF pages to images for classification and vision processing
-        # Run in executor to avoid blocking
         loop = asyncio.get_event_loop()
         page_images = await loop.run_in_executor(
-            None, convert_from_path, temp_file_path
+            None, partial(convert_from_path, temp_file_path, dpi=200)
         )
 
-        # Classify pages and route to appropriate pipelines
-        text_pages_list = []
-        drawing_pages_list = []
+        with pymupdf.open(temp_file_path) as source_doc:
+            total_pages = min(source_doc.page_count, len(page_images))
 
-        for idx, (page_doc, page_image) in enumerate(zip(text_pages, page_images)):
-            # Classify page type
-            page_type = page_classifier.classify_page(page_doc, page_image)
+            for idx in range(total_pages):
+                single_page_doc = pymupdf.open()
+                single_page_doc.insert_pdf(source_doc, from_page=idx, to_page=idx)
+                page_image = page_images[idx]
 
-            # Get page number (0-indexed from PDF)
-            page_number = idx + 1
+                try:
+                    # Classify page type
+                    page_type = page_classifier.classify_page(page_image)
 
-            # Base metadata for the page
-            base_metadata = {
-                **page_doc.metadata,
-                "document_id": document_id,
-                "project_id": project_id,
-                "company_id": company_id,
-                "page_number": page_number,
-            }
+                    # Get page number (0-indexed from PDF)
+                    page_number = idx + 1
 
-            print(f"Processing Page {page_number}: {page_type}")
+                    # Base metadata for the page
+                    base_metadata = {
+                        "source": file_name,
+                        "file_type": "pdf",
+                        "document_id": document_id,
+                        "project_id": project_id,
+                        "company_id": company_id,
+                        "page_number": page_number,
+                    }
 
-            if page_type == "drawing":
-                # Process through vision pipeline
-                processed_doc = await vision_pipeline_service.process_drawing_page(
-                    page_image=page_image,
-                    page_number=page_number,
-                    document_id=document_id,
-                    metadata=base_metadata,
-                )
-                drawing_pages_list.append(processed_doc)
-            else:
-                # Use text page as-is (will be chunked later if needed)
-                page_doc.metadata.update(base_metadata)
-                page_doc.metadata["page_type"] = "text"
-                text_pages_list.append(page_doc)
+                    print(f"Processing Page {page_number}: {page_type}")
+
+                    if page_type == "drawing":
+                        # Process through vision pipeline
+                        processed_drawing_doc = (
+                            await vision_pipeline_service.process_drawing_page(
+                                page_image=page_image,
+                                page_number=page_number,
+                                document_id=document_id,
+                                metadata=base_metadata,
+                            )
+                        )
+                        drawing_pages_list.append(processed_drawing_doc)
+                    else:
+                        text_page_doc = Document(
+                            # page_content=clamp_linebreaks(
+                            #     pymupdf4llm.to_markdown(single_page_doc)
+                            # ),
+                            # TODO: Fix this to something more useful (pure text extraction)
+                            page_content=single_page_doc.get_text(sort=True),
+                            metadata={**base_metadata, "page_type": "text"},
+                        )
+                        text_pages_list.append(text_page_doc)
+                finally:
+                    single_page_doc.close()
 
         return text_pages_list, drawing_pages_list
 

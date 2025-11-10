@@ -19,14 +19,11 @@ class PageClassifier:
         """Initialize the page classifier with Qwen LLM"""
         self._init_llm()
 
-    def classify_page(
-        self, page_document: Document, page_image: Image.Image = None
-    ) -> PageType:
+    def classify_page(self, page_image: Image.Image = None) -> PageType:
         """
         Classify a page as 'text' or 'drawing' based on visual analysis.
 
         Args:
-            page_document: LangChain Document with page content
             page_image: PIL Image of the page for visual analysis
 
         Returns:
