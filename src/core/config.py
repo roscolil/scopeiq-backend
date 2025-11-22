@@ -1,9 +1,10 @@
 """Core configuration settings"""
 
 from pydantic_settings import BaseSettings
-from pydantic import Field
-from typing import List
+from pydantic import Field, field_validator
+from typing import List, Union
 import os
+import json
 from dotenv import load_dotenv
 
 # Load .env file into os.environ for libraries that expect it
@@ -23,6 +24,25 @@ class Settings(BaseSettings):
 
     # CORS
     ALLOWED_ORIGINS: List[str] = Field(default=["*"], env="ALLOWED_ORIGINS")
+
+    @field_validator("ALLOWED_ORIGINS", mode="before")
+    @classmethod
+    def parse_allowed_origins(cls, v: Union[str, List[str]]) -> List[str]:
+        """Parse ALLOWED_ORIGINS from comma-separated string or JSON array"""
+        if isinstance(v, str):
+            # Try to parse as JSON first (for JSON array format)
+            try:
+                parsed = json.loads(v)
+                if isinstance(parsed, list):
+                    return [origin.strip() for origin in parsed]
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+            # Parse as comma-separated string
+            if v.strip() == "*":
+                return ["*"]
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return v if isinstance(v, list) else ["*"]
 
     # AWS Configuration
     AWS_ACCESS_KEY_ID: str = Field(default="", env="AWS_ACCESS_KEY_ID")
